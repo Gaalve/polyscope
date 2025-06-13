@@ -10,7 +10,6 @@ namespace backend_openGL3 {
 
 // High level pipeline
 extern const ShaderStageSpecification FLEX_SPHERE_VERT_SHADER;
-extern const ShaderStageSpecification FLEX_SPHERE_GEOM_SHADER;
 extern const ShaderStageSpecification FLEX_SPHERE_FRAG_SHADER;
 
 extern const ShaderStageSpecification FLEX_POINTQUAD_VERT_SHADER;

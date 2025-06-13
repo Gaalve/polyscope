@@ -38,8 +38,12 @@ R"(
 
         ${ VERT_DECLARATIONS }$
 
-        void buildTangentBasis(vec3 unitNormal, out vec3 basisX, out vec3 basisY);
-
+        vec3 getCameraRight(mat4 view) {
+	    return vec3(view[0][0], view[1][0], view[2][0]);
+	}
+	vec3 getCameraUp(mat4 view) {
+	    return vec3(view[0][1], view[1][1], view[2][1]);
+	}
         const vec2 quad_model[4] = vec2[](
 	    vec2(-1.0, -1.0),
 	    vec2( 1.0, -1.0),
@@ -49,99 +53,30 @@ R"(
 
         out vec2 a_value2ToFrag;
         out vec3 sphereCenterView;
+        out vec2 a_modelToFrag;
 
         void main()
         {
             float pointRadius = u_pointRadius;
 
             vec2 m = quad_model[gl_VertexID & 3];
-            
+            a_modelToFrag = m;
             // Construct the 4 corners of a billboard quad, facing the camera
             // Quad is shifted pointRadius toward the camera, otherwise it doesn't actually necessarily
             // cover the full sphere due to perspective.
 
             vec4 eyePos = u_modelView * vec4(a_position, 1.0);
-            vec3 dirToCam = normalize(-eyePos.xyz);
-            vec3 basisX;
-            vec3 basisY;
-            buildTangentBasis(dirToCam, basisX, basisY);
-            vec4 center = u_projMatrix * (eyePos + vec4(dirToCam, 0.) * pointRadius);
-            vec4 dx = u_projMatrix * (vec4(basisX, 0.) * pointRadius);
-            vec4 dy = u_projMatrix * (vec4(basisY, 0.) * pointRadius);
-            gl_Position = center + dx * m.x + dy * m.y;
+            vec3 right = getCameraRight(u_modelView);
+	    vec3 up = getCameraUp(u_modelView);
+            vec3 offset = (m.x * right + m.y * up) * pointRadius;
+            vec4 finalPos = vec4(a_position + offset, 1.0);
+
+            gl_Position = u_projMatrix * u_modelView * finalPos;
             
             sphereCenterView = eyePos.xyz / eyePos.w;
 
             ${ VERT_ASSIGNMENTS }$
         }
-)"
-};
-
-const ShaderStageSpecification FLEX_SPHERE_GEOM_SHADER = {
-    
-    ShaderStageType::Geometry,
-    
-    // uniforms
-    {
-        {"u_projMatrix", RenderDataType::Matrix44Float},
-        {"u_pointRadius", RenderDataType::Float},
-    }, 
-
-    // attributes
-    {
-    },
-
-    {}, // textures
-
-    // source
-R"(
-        ${ GLSL_VERSION }$
-
-        layout(points) in;
-        layout(triangle_strip, max_vertices=4) out;
-        in vec4 position_tip[];
-        uniform mat4 u_projMatrix;
-        uniform float u_pointRadius;
-        out vec3 sphereCenterView;
-
-        ${ GEOM_DECLARATIONS }$
-
-        void buildTangentBasis(vec3 unitNormal, out vec3 basisX, out vec3 basisY);
-
-        void main() {
-           
-            float pointRadius = u_pointRadius;
-            ${ SPHERE_SET_POINT_RADIUS_GEOM }$
-            
-            // Construct the 4 corners of a billboard quad, facing the camera
-            // Quad is shifted pointRadius toward the camera, otherwise it doesn't actually necessarily
-            // cover the full sphere due to perspective.
-            vec3 dirToCam = normalize(-gl_in[0].gl_Position.xyz);
-            vec3 basisX;
-            vec3 basisY;
-            buildTangentBasis(dirToCam, basisX, basisY);
-            vec4 center = u_projMatrix * (gl_in[0].gl_Position + vec4(dirToCam, 0.) * pointRadius);
-            vec4 dx = u_projMatrix * (vec4(basisX, 0.) * pointRadius);
-            vec4 dy = u_projMatrix * (vec4(basisY, 0.) * pointRadius);
-            vec4 p1 = center - dx - dy;
-            vec4 p2 = center + dx - dy;
-            vec4 p3 = center - dx + dy;
-            vec4 p4 = center + dx + dy;
-            
-            // Other data to emit   
-            ${ GEOM_COMPUTE_BEFORE_EMIT }$
-            vec3 sphereCenterViewVal = gl_in[0].gl_Position.xyz / gl_in[0].gl_Position.w;
-    
-            // Emit the vertices as a triangle strip
-            ${ GEOM_PER_EMIT }$ sphereCenterView = sphereCenterViewVal; gl_Position = p1; EmitVertex(); 
-            ${ GEOM_PER_EMIT }$ sphereCenterView = sphereCenterViewVal; gl_Position = p2; EmitVertex(); 
-            ${ GEOM_PER_EMIT }$ sphereCenterView = sphereCenterViewVal; gl_Position = p3; EmitVertex(); 
-            ${ GEOM_PER_EMIT }$ sphereCenterView = sphereCenterViewVal; gl_Position = p4; EmitVertex(); 
-    
-            EndPrimitive();
-
-        }
-
 )"
 };
 
@@ -171,6 +106,7 @@ R"(
         uniform vec4 u_viewport;
         uniform float u_pointRadius;
         in vec3 sphereCenterView;
+        in vec2 a_modelToFrag;
         layout(location = 0) out vec4 outputF;
 
         float LARGE_FLOAT();
@@ -185,33 +121,39 @@ R"(
         {
            // Build a ray corresponding to this fragment
            vec2 depthRange = vec2(gl_DepthRange.near, gl_DepthRange.far);
-           vec3 viewRay = fragmentViewPosition(u_viewport, depthRange, u_invProjMatrix, gl_FragCoord);
+           //vec3 viewRay = fragmentViewPosition(u_viewport, depthRange, u_invProjMatrix, gl_FragCoord);
 
            float pointRadius = u_pointRadius;
            ${ SPHERE_SET_POINT_RADIUS_FRAG }$
 
            // Raycast to the sphere 
-           float tHit;
-           vec3 pHit;
-           vec3 nHit;
-           bool hit = raySphereIntersection(vec3(0., 0., 0), viewRay, sphereCenterView, pointRadius, tHit, pHit, nHit);
-           if(tHit >= LARGE_FLOAT()) {
-              discard;
-           }
-           float depth = fragDepthFromView(u_projMatrix, depthRange, pHit);
+           //float tHit;
+           //vec3 pHit;
+           //vec3 nHit;
+          // bool hit = raySphereIntersection(vec3(0., 0., 0), viewRay, sphereCenterView, pointRadius, tHit, pHit, nHit);
+           //if(tHit >= LARGE_FLOAT()) {
+           //   discard;
+          // }
+           vec2 m = a_modelToFrag;
+           if (m.x * m.x + m.y * m.y > 1.0) discard;
+           vec3 sphereDir = vec3(m, sqrt(1.0 - dot(m, m)));
+           vec3 sphereNormal = normalize(sphereDir);
+           vec3 pSphere = sphereCenterView + sphereDir * pointRadius;
+           
+           float depth = fragDepthFromView(u_projMatrix, depthRange, pSphere);
 
            ${ GLOBAL_FRAGMENT_FILTER_PREP }$
            ${ GLOBAL_FRAGMENT_FILTER }$
            
            // Set depth (expensive!)
-           gl_FragDepth = depth;
+           //gl_FragDepth = depth;
           
            // Shading
            ${ GENERATE_SHADE_VALUE }$
            ${ GENERATE_SHADE_COLOR }$
 
            // Lighting
-           vec3 shadeNormal = nHit;
+           vec3 shadeNormal = sphereNormal;
            ${ GENERATE_LIT_COLOR }$
 
            // Set alpha

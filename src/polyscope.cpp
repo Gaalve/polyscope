@@ -1343,7 +1343,7 @@ void updateStructureExtents() {
       if (!x.second->hasExtents()) {
         continue;
       }
-      state::lengthScale = std::max(state::lengthScale, x.second->lengthScale());
+      state::lengthScale = std::max({0.1f, state::lengthScale, x.second->lengthScale()});
       auto bbox = x.second->boundingBox();
       minBbox = componentwiseMin(minBbox, std::get<0>(bbox));
       maxBbox = componentwiseMax(maxBbox, std::get<1>(bbox));
@@ -1371,7 +1371,7 @@ void updateStructureExtents() {
   // box as a scale. If we got neither, we'll end up with a constant near 1 due
   // to the above correction
   if (state::lengthScale == 0) {
-    state::lengthScale = glm::length(maxBbox - minBbox);
+    state::lengthScale = std::max(0.1f, glm::length(maxBbox - minBbox));
   }
 
   requestRedraw();
