@@ -91,6 +91,9 @@ void PointCloud::draw() {
     render::engine->setMaterialUniforms(*program, material.get());
     program->setUniform("u_baseColor", pointColor.get());
 
+    program->setInstanceVertexCount(4);
+    program->setInstanceCount(points.size());
+
     // Draw the actual point cloud
     program->draw();
   }
@@ -128,6 +131,9 @@ void PointCloud::drawPick() {
   // Set uniforms
   setStructureUniforms(*pickProgram);
   setPointCloudUniforms(*pickProgram);
+
+  pickProgram->setInstanceVertexCount(4);
+  pickProgram->setInstanceCount(points.size());
 
   pickProgram->draw();
 }

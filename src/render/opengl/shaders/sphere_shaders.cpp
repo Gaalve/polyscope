@@ -16,11 +16,13 @@ const ShaderStageSpecification FLEX_SPHERE_VERT_SHADER = {
     // uniforms
     {
         {"u_modelView", RenderDataType::Matrix44Float},
+        {"u_projMatrix", RenderDataType::Matrix44Float},
+        {"u_pointRadius", RenderDataType::Float},
     }, 
 
     // attributes
     {
-        {"a_position", RenderDataType::Vector3Float},
+        {"a_position", RenderDataType::Vector3Float, 1, 1},
     },
 
     {}, // textures
@@ -31,12 +33,44 @@ R"(
 
         in vec3 a_position;
         uniform mat4 u_modelView;
-        
+        uniform float u_pointRadius;
+        uniform mat4 u_projMatrix;
+
         ${ VERT_DECLARATIONS }$
-        
+
+        void buildTangentBasis(vec3 unitNormal, out vec3 basisX, out vec3 basisY);
+
+        const vec2 quad_model[4] = vec2[](
+	    vec2(-1.0, -1.0),
+	    vec2( 1.0, -1.0),
+	    vec2(-1.0,  1.0),
+            vec2( 1.0,  1.0)
+	);
+
+        out vec2 a_value2ToFrag;
+        out vec3 sphereCenterView;
+
         void main()
         {
-            gl_Position = u_modelView * vec4(a_position, 1.0);
+            float pointRadius = u_pointRadius;
+
+            vec2 m = quad_model[gl_VertexID & 3];
+            
+            // Construct the 4 corners of a billboard quad, facing the camera
+            // Quad is shifted pointRadius toward the camera, otherwise it doesn't actually necessarily
+            // cover the full sphere due to perspective.
+
+            vec4 eyePos = u_modelView * vec4(a_position, 1.0);
+            vec3 dirToCam = normalize(-eyePos.xyz);
+            vec3 basisX;
+            vec3 basisY;
+            buildTangentBasis(dirToCam, basisX, basisY);
+            vec4 center = u_projMatrix * (eyePos + vec4(dirToCam, 0.) * pointRadius);
+            vec4 dx = u_projMatrix * (vec4(basisX, 0.) * pointRadius);
+            vec4 dy = u_projMatrix * (vec4(basisY, 0.) * pointRadius);
+            gl_Position = center + dx * m.x + dy * m.y;
+            
+            sphereCenterView = eyePos.xyz / eyePos.w;
 
             ${ VERT_ASSIGNMENTS }$
         }
@@ -360,10 +394,10 @@ const ShaderReplacementRule SPHERE_PROPAGATE_VALUE (
     { /* replacement sources */
       {"VERT_DECLARATIONS", R"(
           in float a_value;
-          out float a_valueToGeom;
+          out float a_valueToFrag;
         )"},
       {"VERT_ASSIGNMENTS", R"(
-          a_valueToGeom = a_value;
+          a_valueToFrag = a_value;
         )"},
       {"GEOM_DECLARATIONS", R"(
           in float a_valueToGeom[];
@@ -391,10 +425,10 @@ const ShaderReplacementRule SPHERE_PROPAGATE_VALUEALPHA (
     { /* replacement sources */
       {"VERT_DECLARATIONS", R"(
           in float a_valueAlpha;
-          out float a_valueAlphaToGeom;
+          out float a_valueAlphaToFrag;
         )"},
       {"VERT_ASSIGNMENTS", R"(
-          a_valueAlphaToGeom = a_valueAlpha;
+          a_valueAlphaToFrag = a_valueAlpha;
         )"},
       {"GEOM_DECLARATIONS", R"(
           in float a_valueAlphaToGeom[];
@@ -422,10 +456,10 @@ const ShaderReplacementRule SPHERE_PROPAGATE_VALUE2 (
     { /* replacement sources */
       {"VERT_DECLARATIONS", R"(
           in vec2 a_value2;
-          out vec2 a_value2ToGeom;
+          out vec2 a_value2ToFrag;
         )"},
       {"VERT_ASSIGNMENTS", R"(
-          a_value2ToGeom = a_value2;
+          a_value2ToFrag = a_value2;
         )"},
       {"GEOM_DECLARATIONS", R"(
           in vec2 a_value2ToGeom[];
@@ -453,10 +487,10 @@ const ShaderReplacementRule SPHERE_PROPAGATE_COLOR (
     { /* replacement sources */
       {"VERT_DECLARATIONS", R"(
           in vec3 a_color;
-          out vec3 a_colorToGeom;
+          flat out vec3 a_colorToFrag;
         )"},
       {"VERT_ASSIGNMENTS", R"(
-          a_colorToGeom = a_color;
+          a_colorToFrag = a_color;
         )"},
       {"GEOM_DECLARATIONS", R"(
           in vec3 a_colorToGeom[];
@@ -522,10 +556,10 @@ const ShaderReplacementRule SPHERE_VARIABLE_SIZE (
     { /* replacement sources */
       {"VERT_DECLARATIONS", R"(
           in float a_pointRadius;
-          out float a_pointRadiusToGeom;
+          out float a_pointRadiusToFrag;
         )"},
       {"VERT_ASSIGNMENTS", R"(
-          a_pointRadiusToGeom = a_pointRadius;
+          a_pointRadiusToFrag = a_pointRadius;
         )"},
       {"GEOM_DECLARATIONS", R"(
           in float a_pointRadiusToGeom[];
